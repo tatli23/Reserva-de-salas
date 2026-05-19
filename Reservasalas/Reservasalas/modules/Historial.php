@@ -64,8 +64,7 @@ function badgeEstado2(string $e): string {
 startLayout('Historial', 'historial');
 ?>
 
-<h1 class="page-title">📋 Historial de reservaciones</h1>
-<p class="page-sub">Consulta tus reservaciones activas, completadas y canceladas.</p>
+<h1 class="page-title"> Historial de reservaciones</h1>
 
 <!-- Filtros -->
 <div class="card" style="margin-bottom:20px;padding:16px 20px;">
@@ -169,10 +168,6 @@ startLayout('Historial', 'historial');
   <?php endif; ?>
 </div>
 
-<!-- Nota -->
-<p style="font-size:12px;color:var(--gris-muted);margin-top:8px;">
-  ℹ️ Al presionar <em>Sala desocupada</em>, el maestro notifica al administrador que la sala fue liberada.
-</p>
 
 <!-- Paginación -->
 <?php if ($totalPages > 1): ?>

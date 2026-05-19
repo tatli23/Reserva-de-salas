@@ -55,7 +55,7 @@ $maxSala  = $topSalas[0]['total'] ?? 1;
 startLayout('Reportes', 'reportes');
 ?>
 
-<h1 class="page-title">📈 Reportes</h1>
+<h1 class="page-title"> Reportes</h1>
 <p class="page-sub">Análisis de uso de salas audiovisuales del ITSZN.</p>
 
 <!-- Selector de mes -->

@@ -1,6 +1,8 @@
 <?php
 // ============================================================
 //  modules/nueva_reservacion.php
+//  → Las reservaciones quedan en estado "pendiente" hasta
+//    que el administrador las aprueba.
 // ============================================================
 require_once '../config/config.php';
 requireLogin();
@@ -12,7 +14,7 @@ $uid = $_SESSION['user_id'];
 // Cargar salas activas
 $salas = $pdo->query('SELECT * FROM salas WHERE activa = 1 ORDER BY codigo')->fetchAll();
 
-// Valores por defecto (GET o POST)
+// Valores
 $sala_id     = (int)($_POST['sala_id']     ?? $_GET['sala_id']     ?? ($salas[0]['id'] ?? 0));
 $fecha       = $_POST['fecha']             ?? $_GET['fecha']        ?? date('Y-m-d');
 $hora_inicio = $_POST['hora_inicio']       ?? '09:00';
@@ -20,10 +22,9 @@ $hora_fin    = $_POST['hora_fin']          ?? '11:00';
 $proposito   = $_POST['proposito']         ?? '';
 
 $errores = [];
-$ok      = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'confirmar') {
-    // ── Validaciones ──────────────────────────────────────────
+
     if (!$sala_id)     $errores[] = 'Selecciona una sala.';
     if (!$fecha)       $errores[] = 'Indica la fecha.';
     if (!$hora_inicio) $errores[] = 'Indica la hora de inicio.';
@@ -33,82 +34,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     if ($fecha < date('Y-m-d'))    $errores[] = 'No puedes reservar en fechas pasadas.';
 
     if (empty($errores)) {
-        // Verificar conflictos
+        // Verificar conflictos (solo con reservaciones activas/pendientes/pospuestas)
         $stmtChk = $pdo->prepare(
             'SELECT COUNT(*) FROM reservaciones
-             WHERE sala_id = ? AND fecha = ? AND estado NOT IN ("cancelada")
+             WHERE sala_id = ? AND fecha = ? AND estado NOT IN ("cancelada","rechazada")
              AND NOT (hora_fin <= ? OR hora_inicio >= ?)'
         );
         $stmtChk->execute([$sala_id, $fecha, $hora_inicio, $hora_fin]);
         if ($stmtChk->fetchColumn() > 0) {
-            $errores[] = 'La sala ya está ocupada en ese horario. Elige otro.';
+            $errores[] = 'La sala ya está ocupada o tiene solicitud pendiente en ese horario.';
         }
     }
 
     if (empty($errores)) {
-        // Insertar reservación
+        // Insertar en estado PENDIENTE (requiere aprobación del admin)
         $ins = $pdo->prepare(
             'INSERT INTO reservaciones (sala_id, usuario_id, fecha, hora_inicio, hora_fin, proposito, estado)
-             VALUES (?, ?, ?, ?, ?, ?, "activa")'
+             VALUES (?, ?, ?, ?, ?, ?, "pendiente")'
         );
         $ins->execute([$sala_id, $uid, $fecha, $hora_inicio, $hora_fin, $proposito]);
         $rid = $pdo->lastInsertId();
 
-        // Notificación al usuario
+        // Notificación al usuario: solicitud enviada
         $pdo->prepare(
             'INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, reservacion_id)
-             VALUES (?, "confirmacion", "Confirmación de reservación",
-             CONCAT("Tu reservación en sala ", (SELECT codigo FROM salas WHERE id=?),
-             " el ", ?, " ", ?, "–", ?, " fue confirmada."), ?)'
+             VALUES (?, "confirmacion", "Solicitud enviada al administrador",
+             CONCAT("Tu solicitud para sala ", (SELECT codigo FROM salas WHERE id=?),
+             " el ", ?, " de ", ?, " a ", ?, " fue enviada. Espera la aprobación."), ?)'
         )->execute([$uid, $sala_id, $fecha, $hora_inicio, $hora_fin, $rid]);
 
-        // Notificación al administrador
+        // Notificación al administrador: nueva solicitud para aprobar
         $stmtAdmin = $pdo->query('SELECT id FROM usuarios WHERE rol="admin" LIMIT 1');
         if ($adminRow = $stmtAdmin->fetch()) {
             $user = currentUser();
             $pdo->prepare(
                 'INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, reservacion_id)
-                 VALUES (?, "nueva_reserva", "Nueva reservación registrada",
-                 CONCAT(?, " registró sala ", (SELECT codigo FROM salas WHERE id=?),
-                 " el ", ?, " ", ?, "–", ?), ?)'
-            )->execute([$adminRow['id'], $user['nombre'], $sala_id, $fecha, $hora_inicio, $hora_fin, $rid]);
+                 VALUES (?, "nueva_reserva", "⏳ Solicitud de reservación — requiere aprobación",
+                 CONCAT(?, " solicita sala ", (SELECT codigo FROM salas WHERE id=?),
+                 " el ", ?, " de ", ?, " a ", ?, ". Propósito: ", ?), ?)'
+            )->execute([
+                $adminRow['id'], $user['nombre'], $sala_id,
+                $fecha, $hora_inicio, $hora_fin, $proposito, $rid
+            ]);
         }
 
-        flash('✅ Reservación confirmada correctamente.', 'success');
-        header('Location: ' . BASE_URL . '/modules/historial.php');
+        flash('✅ Solicitud enviada correctamente. Espera la aprobación del administrador.', 'info');
+        header('Location: ' . BASE_URL . '/modules/mis_solicitudes.php');
         exit;
     }
 }
 
-// Disponibilidad de la sala seleccionada en la fecha elegida
+// Disponibilidad
 $disponibilidad = [];
 if ($sala_id && $fecha) {
     $stmtD = $pdo->prepare(
         'SELECT r.hora_inicio, r.hora_fin, r.estado, u.nombre AS uname
          FROM reservaciones r JOIN usuarios u ON u.id = r.usuario_id
-         WHERE r.sala_id = ? AND r.fecha = ? AND r.estado NOT IN ("cancelada")
+         WHERE r.sala_id = ? AND r.fecha = ? AND r.estado NOT IN ("cancelada","rechazada")
          ORDER BY r.hora_inicio'
     );
     $stmtD->execute([$sala_id, $fecha]);
     $reservHoras = $stmtD->fetchAll();
 
-    // Generar franjas de 8:00 a 20:00
     for ($h = 8; $h < 20; $h++) {
-        $slot = sprintf('%02d:00', $h);
-        $slotFin = sprintf('%02d:00', $h + 1);
-        $tipo  = 'libre';
-        $label = 'Libre';
+        $slot  = sprintf('%02d:00', $h);
+        $tipo  = 'libre'; $label = 'Libre';
         foreach ($reservHoras as $rh) {
             if ($rh['hora_inicio'] <= $slot && $rh['hora_fin'] > $slot) {
                 if ($rh['uname'] === currentUser()['nombre']) {
-                    $tipo  = 'propia';
-                    $label = 'Tu reservación';
+                    $tipo  = 'propia'; $label = 'Tu solicitud';
                 } elseif ($rh['estado'] === 'pospuesta') {
-                    $tipo  = 'pospuesta';
-                    $label = 'Pospuesta — ' . $rh['uname'];
+                    $tipo  = 'pospuesta'; $label = 'Pospuesta — ' . $rh['uname'];
+                } elseif ($rh['estado'] === 'pendiente') {
+                    $tipo  = 'ocupada'; $label = 'Solicitud pendiente';
                 } else {
-                    $tipo  = 'ocupada';
-                    $label = 'Ocupada — ' . $rh['uname'];
+                    $tipo  = 'ocupada'; $label = 'Ocupada — ' . $rh['uname'];
                 }
                 break;
             }
@@ -117,15 +117,17 @@ if ($sala_id && $fecha) {
     }
 }
 
-// Datos de la sala seleccionada
 $salaActual = null;
 foreach ($salas as $s) { if ($s['id'] == $sala_id) { $salaActual = $s; break; } }
 
 startLayout('Nueva Reservación', 'reservacion');
 ?>
 
-<h1 class="page-title">➕ Nueva reservación</h1>
-<p class="page-sub">Crear, cancelar o posponer reservaciones — el administrador recibe notificación automática.</p>
+<h1 class="page-title">Nueva reservación</h1>
+<p class="page-sub">
+  Tu solicitud será enviada al administrador para aprobación.
+  Recibirás una notificación cuando sea aprobada o rechazada.
+</p>
 
 <?php if (!empty($errores)): ?>
   <div class="alert alert-danger">
@@ -141,9 +143,9 @@ startLayout('Nueva Reservación', 'reservacion');
 
   <!-- Formulario -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:16px;">Nueva reservación</div>
+    <div class="card-title" style="margin-bottom:16px;">Datos de la solicitud</div>
 
-    <form method="POST" action="" id="frmReserva">
+    <form method="POST" action="">
       <input type="hidden" name="accion" value="confirmar">
 
       <div class="form-group">
@@ -185,24 +187,25 @@ startLayout('Nueva Reservación', 'reservacion');
                value="<?= htmlspecialchars($proposito) ?>">
       </div>
 
-      <!-- Botones -->
-      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
-        <button type="submit" class="btn btn-primary">✓ Confirmar</button>
-        <a href="<?= BASE_URL ?>/modules/historial.php" class="btn btn-danger">✕ Cancelar</a>
+      <!-- Info -->
+      <div style="background:#f0f7ff;border:1px solid #c8dff7;border-radius:8px;
+                  padding:12px 14px;margin-bottom:16px;font-size:13px;color:#1e4d9b;">
+        ℹ️ Al enviar, el administrador recibirá una notificación para <strong>aprobar o rechazar</strong>
+        tu solicitud. Se te notificará la decisión.
       </div>
 
-      <p style="font-size:12px;color:var(--gris-muted);margin-top:12px;">
-        🔔 Al confirmar, cancelar o posponer — el administrador recibe notificación automática.
-      </p>
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">📨 Enviar solicitud</button>
+        <a href="<?= BASE_URL ?>/modules/mis_solicitudes.php" class="btn btn-ghost">Ver mis solicitudes</a>
+      </div>
     </form>
   </div>
 
-  <!-- Panel disponibilidad -->
+  <!-- Disponibilidad -->
   <div class="card">
     <div class="card-title" style="margin-bottom:12px;">
       Disponibilidad — <?= $salaActual ? htmlspecialchars($salaActual['codigo']) : '—' ?>
     </div>
-
     <div id="disp-container">
       <?php foreach ($disponibilidad as $slot): ?>
       <div class="hora-item hora-<?= $slot['tipo'] ?>">
@@ -211,7 +214,6 @@ startLayout('Nueva Reservación', 'reservacion');
       </div>
       <?php endforeach; ?>
     </div>
-
     <?php if ($salaActual): ?>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--gris-borde);
                 font-size:12px;color:var(--gris-muted);">

@@ -102,18 +102,6 @@ startLayout('Dashboard', 'dashboard');
   </div>
 </div>
 
-<!-- Acciones rápidas -->
-<div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
-  <a href="<?= BASE_URL ?>/modules/nueva_reservacion.php" class="btn btn-primary">
-    ➕ Nueva reservación
-  </a>
-  <a href="<?= BASE_URL ?>/modules/calendario.php" class="btn btn-outline">
-    📅 Ver calendario
-  </a>
-  <a href="<?= BASE_URL ?>/modules/historial.php" class="btn btn-ghost">
-    📋 Mi historial
-  </a>
-</div>
 
 <!-- Próximas reservaciones -->
 <div class="card">

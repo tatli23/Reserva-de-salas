@@ -77,7 +77,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           id="correo"
           name="correo"
           class="form-control"
-          placeholder="usuario@itszn.edu.mx"
           value="<?= htmlspecialchars($_POST['correo'] ?? '') ?>"
           required
           autocomplete="username"
@@ -90,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           id="password"
           name="password"
           class="form-control"
-          placeholder="••••••••"
+
           required
           autocomplete="current-password"
         >
@@ -107,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Regístrate aquí →
       </a>
     </div>
-    
+
       </div>
     </div>
 

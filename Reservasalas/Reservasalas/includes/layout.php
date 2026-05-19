@@ -1,9 +1,5 @@
 <?php
 // includes/layout.php
-// Uso: require 'includes/layout.php';
-//      startLayout('Título de página', 'item-activo');
-//      ... contenido ...
-//      endLayout();
 
 function startLayout(string $title, string $activeMenu = ''): void {
     global $_activeMenu;
@@ -11,6 +7,8 @@ function startLayout(string $title, string $activeMenu = ''): void {
     $user = currentUser();
     $initials = implode('', array_map(fn($w) => strtoupper($w[0]),
                     array_slice(explode(' ', $user['nombre'] ?? 'U'), 0, 2)));
+    $admin = isAdmin();
+
     // Contar notificaciones no leídas
     try {
         $pdo = getDB();
@@ -26,14 +24,13 @@ function startLayout(string $title, string $activeMenu = ''): void {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= htmlspecialchars($title) ?> — ITSZN ReservaSalas</title>
   <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
-  <!-- Iconos Phosphor (outline) -->
   <script src="https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js"></script>
 </head>
 <body>
 
-<!-- ── Barra superior ─────────────────────────────────────── -->
+<!-- Barra superior -->
 <header class="topbar">
-  <a href="<?= BASE_URL ?>/dashboard.php" class="topbar-logo">
+  <a href="<?= BASE_URL ?><?= $admin ? '/dashboard.php' : '/modules/nueva_reservacion.php' ?>" class="topbar-logo">
     <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
       <rect width="32" height="32" rx="8" fill="rgba(255,255,255,.15)"/>
       <path d="M8 22V12l8-4 8 4v10l-8 4-8-4z" stroke="#fff" stroke-width="1.8" fill="none"/>
@@ -42,68 +39,69 @@ function startLayout(string $title, string $activeMenu = ''): void {
     ReservaSalas <span class="inst">· ITSZN</span>
   </a>
   <div class="topbar-spacer"></div>
-  <a href="<?= BASE_URL ?>/modules/notificaciones.php" class="topbar-notif" title="Notificaciones">
-    🔔
-    <?php if ($unread > 0): ?>
-    <span class="notif-badge"><?= $unread > 9 ? '9+' : $unread ?></span>
-    <?php endif; ?>
-  </a>
   <div class="topbar-user">
     <div class="topbar-avatar"><?= $initials ?></div>
     <span><?= htmlspecialchars($user['nombre'] ?? '') ?></span>
-    <a href="<?= BASE_URL ?>/logout.php" style="color:#fff;opacity:.6;font-size:12px;text-decoration:none;margin-left:4px;">(salir)</a>
+    <?php if ($admin): ?>
+      <span style="margin-left:6px;background:rgba(255,255,255,.2);color:#fff;
+                   font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700;">
+        ADMIN
+      </span>
+    <?php endif; ?>
+    <a href="<?= BASE_URL ?>/logout.php"
+       style="color:#fff;opacity:.6;font-size:12px;text-decoration:none;margin-left:8px;">
+      (salir)
+    </a>
   </div>
 </header>
 
-<!-- ── Layout ─────────────────────────────────────────────── -->
+<!-- Layout -->
 <div class="layout">
 
   <!-- Sidebar -->
   <nav class="sidebar">
-    <?php if (isAdmin()): ?>
+
+    <?php if ($admin): ?>
+    <!-- Menú ADMIN -->
     <a href="<?= BASE_URL ?>/dashboard.php"
        class="<?= $activeMenu === 'dashboard' ? 'active' : '' ?>">
-      📊 Dashboard
+      Dashboard
     </a>
     <?php endif; ?>
+
+    <!-- Menú común -->
     <a href="<?= BASE_URL ?>/modules/calendario.php"
        class="<?= $activeMenu === 'calendario' ? 'active' : '' ?>">
-      📅 Calendario
+      Calendario
     </a>
     <a href="<?= BASE_URL ?>/modules/nueva_reservacion.php"
        class="<?= $activeMenu === 'reservacion' ? 'active' : '' ?>">
-      ➕ Nueva reservación
+      Nueva reservación
     </a>
+
+    <?php if ($admin): ?>
     <a href="<?= BASE_URL ?>/modules/historial.php"
        class="<?= $activeMenu === 'historial' ? 'active' : '' ?>">
-      📋 Historial
-    </a>
-    <a href="<?= BASE_URL ?>/modules/notificaciones.php"
-       class="<?= $activeMenu === 'notificaciones' ? 'active' : '' ?>">
-      🔔 Notificaciones
-    </a>
-    <?php if (isAdmin()): ?>
-    <div class="sidebar-sep"></div>
-    <div class="sidebar-section">Administración</div>
-    <a href="<?= BASE_URL ?>/modules/salas.php"
-       class="<?= $activeMenu === 'salas' ? 'active' : '' ?>">
-      🏫 Salas
-    </a>
-    <a href="<?= BASE_URL ?>/modules/reportes.php"
-       class="<?= $activeMenu === 'reportes' ? 'active' : '' ?>">
-      📈 Reportes
-    </a>
-    <a href="<?= BASE_URL ?>/modules/usuarios.php"
-       class="<?= $activeMenu === 'usuarios' ? 'active' : '' ?>">
-      👥 Usuarios
+      Historial
     </a>
     <?php endif; ?>
+
+    <a href="<?= BASE_URL ?>/modules/notificaciones.php"
+       class="<?= $activeMenu === 'notificaciones' ? 'active' : '' ?>">
+      Notificaciones
+      <?php if ($unread > 0): ?>
+        <span style="background:var(--rojo);color:#fff;font-size:10px;font-weight:700;
+                     padding:1px 6px;border-radius:20px;margin-left:6px;">
+          <?= $unread ?>
+        </span>
+      <?php endif; ?>
+    </a>
+
   </nav>
 
   <!-- Contenido principal -->
   <main class="main">
     <?php
-    // Flash messages
     if (!empty($_SESSION['flash'])) {
         $flash = $_SESSION['flash'];
         unset($_SESSION['flash']);
@@ -111,13 +109,13 @@ function startLayout(string $title, string $activeMenu = ''): void {
         echo "<div class='alert alert-{$tipo}'>{$flash['msg']}</div>";
     }
     ?>
-    <?php
+<?php
 }
 
 function endLayout(): void {
     ?>
   </main>
-</div><!-- /layout -->
+</div>
 
 <script src="<?= BASE_URL ?>/assets/js/app.js"></script>
 </body>
@@ -125,7 +123,6 @@ function endLayout(): void {
 <?php
 }
 
-// Helper para mensajes flash
 function flash(string $msg, string $tipo = 'success'): void {
     $_SESSION['flash'] = ['msg' => $msg, 'tipo' => $tipo];
 }

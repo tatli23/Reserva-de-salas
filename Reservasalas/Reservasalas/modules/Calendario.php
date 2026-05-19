@@ -69,8 +69,7 @@ if ($nextM > 12) { $nextM = 1; $nextY++; }
 startLayout('Calendario', 'calendario');
 ?>
 
-<h1 class="page-title">📅 Calendario</h1>
-<p class="page-sub">Visualiza disponibilidad de salas por mes. Haz clic en un día para reservar.</p>
+<h1 class="page-title"> Calendario</h1>
 
 <div style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start;">
 
@@ -79,11 +78,11 @@ startLayout('Calendario', 'calendario');
     <!-- Cabecera navegación -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <h2 style="font-size:17px;font-weight:700;color:var(--azul-oscuro);">
-        ◀ <a href="?month=<?= $prevM ?>&year=<?= $prevY ?>"
-              style="color:inherit;text-decoration:none;">prev</a>
+        <a href="?month=<?= $prevM ?>&year=<?= $prevY ?>"
+              style="color:inherit;text-decoration:none;">◀ </a>
         &nbsp;&nbsp;<?= $mesesES[$month] ?> <?= $year ?>&nbsp;&nbsp;
         <a href="?month=<?= $nextM ?>&year=<?= $nextY ?>"
-           style="color:inherit;text-decoration:none;">sig</a> ▶
+           style="color:inherit;text-decoration:none;">▶</a> 
       </h2>
       <div style="display:flex;gap:6px;">
         <span style="font-size:12px;display:flex;align-items:center;gap:4px;">
@@ -168,7 +167,7 @@ startLayout('Calendario', 'calendario');
 
     <!-- Próximas -->
     <div class="card">
-      <div class="card-title" style="margin-bottom:12px;">📌 Próximas</div>
+      <div class="card-title" style="margin-bottom:12px;"> Próximas</div>
       <?php if (empty($proximas)): ?>
         <p style="font-size:13px;color:var(--gris-muted);">Sin reservaciones próximas.</p>
       <?php else: ?>
