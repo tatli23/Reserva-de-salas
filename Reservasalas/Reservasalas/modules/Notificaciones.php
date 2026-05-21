@@ -13,26 +13,13 @@ $admin = isAdmin();
 // Marcar todas como leídas al visitar
 $pdo->prepare('UPDATE notificaciones SET leida=1 WHERE usuario_id=?')->execute([$uid]);
 
-if ($admin) {
-    // Admin: eventos de todos los usuarios
-    $stmt = $pdo->prepare(
-        "SELECT n.*, u.nombre AS desde_nombre
-         FROM notificaciones n
-         JOIN usuarios u ON u.id = n.usuario_id
-         WHERE n.tipo IN ('nueva_reserva','posposicion','cancelacion','sala_libre')
-         ORDER BY n.created_at DESC LIMIT 30"
-    );
-    $stmt->execute();
-} else {
-    // Usuario normal: solo las suyas, sin tipos de admin
-    $stmt = $pdo->prepare(
-        "SELECT * FROM notificaciones
-         WHERE usuario_id = ?
-           AND tipo NOT IN ('nueva_reserva')
-         ORDER BY created_at DESC LIMIT 30"
-    );
-    $stmt->execute([$uid]);
-}
+// Tanto admin como usuario: solo ven las notificaciones dirigidas a ellos (usuario_id = su id)
+$stmt = $pdo->prepare(
+    "SELECT * FROM notificaciones
+     WHERE usuario_id = ?
+     ORDER BY created_at DESC LIMIT 50"
+);
+$stmt->execute([$uid]);
 $notifs = $stmt->fetchAll();
 
 function iconoTipo(string $tipo): string {
@@ -70,7 +57,7 @@ function tiempoRelativo(string $dt): string {
 startLayout('Notificaciones', 'notificaciones');
 ?>
 
-<h1 class="page-title"> Notificaciones</h1>
+<h1 class="page-title">Notificaciones</h1>
 
 <div class="card">
   <div style="background:<?= $admin ? 'var(--azul-oscuro)' : 'var(--azul-medio)' ?>;
@@ -78,7 +65,7 @@ startLayout('Notificaciones', 'notificaciones');
               padding:12px 16px;margin:-20px -24px 16px;
               font-weight:600;font-size:14px;
               display:flex;align-items:center;gap:8px;">
-    <?= $admin ? '🛡️ Panel de administrador' : ' Mis notificaciones' ?>
+    <?= $admin ? '🛡️ Panel de administrador' : '🔔 Mis notificaciones' ?>
   </div>
 
   <?php if (empty($notifs)): ?>

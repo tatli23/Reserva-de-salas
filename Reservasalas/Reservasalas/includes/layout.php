@@ -16,6 +16,15 @@ function startLayout(string $title, string $activeMenu = ''): void {
         $stmt->execute([$_SESSION['user_id']]);
         $unread = (int)$stmt->fetchColumn();
     } catch (Exception $e) { $unread = 0; }
+
+    // Contar solicitudes pendientes (solo admin)
+    $pendientes = 0;
+    if ($admin) {
+        try {
+            $stmtP = $pdo->query("SELECT COUNT(*) FROM reservaciones WHERE estado = 'pendiente'");
+            $pendientes = (int)$stmtP->fetchColumn();
+        } catch (Exception $e) { $pendientes = 0; }
+    }
     ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -30,7 +39,7 @@ function startLayout(string $title, string $activeMenu = ''): void {
 
 <!-- Barra superior -->
 <header class="topbar">
-  <a href="<?= BASE_URL ?><?= $admin ? '/dashboard.php' : '/modules/nueva_reservacion.php' ?>" class="topbar-logo">
+  <a href="<?= $admin ? BASE_URL . '/dashboard.php' : BASE_URL . '/modules/nueva_reservacion.php' ?>" class="topbar-logo">
     <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
       <rect width="32" height="32" rx="8" fill="rgba(255,255,255,.15)"/>
       <path d="M8 22V12l8-4 8 4v10l-8 4-8-4z" stroke="#fff" stroke-width="1.8" fill="none"/>
@@ -39,19 +48,15 @@ function startLayout(string $title, string $activeMenu = ''): void {
     ReservaSalas <span class="inst">· ITSZN</span>
   </a>
   <div class="topbar-spacer"></div>
+
   <div class="topbar-user">
     <div class="topbar-avatar"><?= $initials ?></div>
     <span><?= htmlspecialchars($user['nombre'] ?? '') ?></span>
     <?php if ($admin): ?>
-      <span style="margin-left:6px;background:rgba(255,255,255,.2);color:#fff;
-                   font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700;">
-        ADMIN
-      </span>
+      <span style="background:rgba(255,255,255,.2);color:#fff;font-size:10px;font-weight:700;
+                   padding:2px 7px;border-radius:10px;margin-left:4px;">ADMIN</span>
     <?php endif; ?>
-    <a href="<?= BASE_URL ?>/logout.php"
-       style="color:#fff;opacity:.6;font-size:12px;text-decoration:none;margin-left:8px;">
-      (salir)
-    </a>
+    <a href="<?= BASE_URL ?>/logout.php" style="color:#fff;opacity:.6;font-size:12px;text-decoration:none;margin-left:6px;">(salir)</a>
   </div>
 </header>
 
@@ -62,40 +67,64 @@ function startLayout(string $title, string $activeMenu = ''): void {
   <nav class="sidebar">
 
     <?php if ($admin): ?>
-    <!-- Menú ADMIN -->
-    <a href="<?= BASE_URL ?>/dashboard.php"
-       class="<?= $activeMenu === 'dashboard' ? 'active' : '' ?>">
-      Dashboard
-    </a>
+      <!-- ── Menú ADMINISTRADOR ── -->
+      <a href="<?= BASE_URL ?>/dashboard.php"
+         class="<?= $activeMenu === 'dashboard' ? 'active' : '' ?>">
+        Dashboard
+      </a>
+      <a href="<?= BASE_URL ?>/modules/calendario.php"
+         class="<?= $activeMenu === 'calendario' ? 'active' : '' ?>">
+        Calendario
+      </a>
+      <a href="<?= BASE_URL ?>/modules/nueva_reservacion.php"
+         class="<?= $activeMenu === 'reservacion' ? 'active' : '' ?>">
+        Nueva reservación
+      </a>
+      <a href="<?= BASE_URL ?>/modules/historial.php"
+         class="<?= $activeMenu === 'historial' ? 'active' : '' ?>">
+        Historial
+      </a>
+      <a href="<?= BASE_URL ?>/modules/solicitudes.php"
+         class="<?= $activeMenu === 'solicitudes' ? 'active' : '' ?>"
+         style="position:relative;">
+        Solicitudes
+        <?php if ($pendientes > 0): ?>
+          <span style="background:#e74c3c;color:#fff;font-size:10px;font-weight:700;
+                       padding:1px 6px;border-radius:10px;margin-left:6px;"><?= $pendientes ?></span>
+        <?php endif; ?>
+      </a>
+      <a href="<?= BASE_URL ?>/modules/notificaciones.php"
+         class="<?= $activeMenu === 'notificaciones' ? 'active' : '' ?>">
+        Notificaciones
+        <?php if ($unread > 0): ?>
+          <span style="background:#e74c3c;color:#fff;font-size:10px;font-weight:700;
+                       padding:1px 6px;border-radius:10px;margin-left:6px;"><?= $unread ?></span>
+        <?php endif; ?>
+      </a>
+
+    <?php else: ?>
+      <!-- ── Menú USUARIO ── -->
+      <a href="<?= BASE_URL ?>/modules/calendario.php"
+         class="<?= $activeMenu === 'calendario' ? 'active' : '' ?>">
+        Calendario
+      </a>
+      <a href="<?= BASE_URL ?>/modules/nueva_reservacion.php"
+         class="<?= $activeMenu === 'reservacion' ? 'active' : '' ?>">
+        Nueva reservación
+      </a>
+      <a href="<?= BASE_URL ?>/modules/mis_reservas.php"
+         class="<?= $activeMenu === 'mis_reservas' ? 'active' : '' ?>">
+        Mis reservas
+      </a>
+      <a href="<?= BASE_URL ?>/modules/notificaciones.php"
+         class="<?= $activeMenu === 'notificaciones' ? 'active' : '' ?>">
+        Notificaciones
+        <?php if ($unread > 0): ?>
+          <span style="background:#e74c3c;color:#fff;font-size:10px;font-weight:700;
+                       padding:1px 6px;border-radius:10px;margin-left:6px;"><?= $unread ?></span>
+        <?php endif; ?>
+      </a>
     <?php endif; ?>
-
-    <!-- Menú común -->
-    <a href="<?= BASE_URL ?>/modules/calendario.php"
-       class="<?= $activeMenu === 'calendario' ? 'active' : '' ?>">
-      Calendario
-    </a>
-    <a href="<?= BASE_URL ?>/modules/nueva_reservacion.php"
-       class="<?= $activeMenu === 'reservacion' ? 'active' : '' ?>">
-      Nueva reservación
-    </a>
-
-    <?php if ($admin): ?>
-    <a href="<?= BASE_URL ?>/modules/historial.php"
-       class="<?= $activeMenu === 'historial' ? 'active' : '' ?>">
-      Historial
-    </a>
-    <?php endif; ?>
-
-    <a href="<?= BASE_URL ?>/modules/notificaciones.php"
-       class="<?= $activeMenu === 'notificaciones' ? 'active' : '' ?>">
-      Notificaciones
-      <?php if ($unread > 0): ?>
-        <span style="background:var(--rojo);color:#fff;font-size:10px;font-weight:700;
-                     padding:1px 6px;border-radius:20px;margin-left:6px;">
-          <?= $unread ?>
-        </span>
-      <?php endif; ?>
-    </a>
 
   </nav>
 
@@ -115,7 +144,7 @@ function startLayout(string $title, string $activeMenu = ''): void {
 function endLayout(): void {
     ?>
   </main>
-</div>
+</div><!-- /layout -->
 
 <script src="<?= BASE_URL ?>/assets/js/app.js"></script>
 </body>

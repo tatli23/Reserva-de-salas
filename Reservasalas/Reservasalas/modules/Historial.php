@@ -52,7 +52,7 @@ $salas = $pdo->query('SELECT id, codigo FROM salas ORDER BY codigo')->fetchAll()
 
 function badgeEstado2(string $e): string {
     return match($e) {
-        'activa'     => "<span class='badge badge-success'>Completada</span>",
+        'activa'     => "<span class='badge badge-success'>Activa</span>",
         'pendiente'  => "<span class='badge badge-info'>Pendiente</span>",
         'completada' => "<span class='badge badge-muted'>Completada</span>",
         'cancelada'  => "<span class='badge badge-danger'>Cancelada</span>",
@@ -64,7 +64,7 @@ function badgeEstado2(string $e): string {
 startLayout('Historial', 'historial');
 ?>
 
-<h1 class="page-title"> Historial de reservaciones</h1>
+<h1 class="page-title">Historial de reservaciones</h1>
 
 <!-- Filtros -->
 <div class="card" style="margin-bottom:20px;padding:16px 20px;">
@@ -113,17 +113,16 @@ startLayout('Historial', 'historial');
     };
   ?>
   <div style="display:flex;gap:14px;align-items:center;padding:14px 20px;
-              border-bottom:1px solid #f0f2f7;position:relative;">
+              border-bottom:1px solid #f0f2f7;position:relative;flex-wrap:wrap;">
     <!-- Dot -->
     <div style="width:12px;height:12px;border-radius:50%;
                 background:<?= $dotColor ?>;flex-shrink:0;"></div>
 
     <!-- Info sala -->
     <div style="flex:1;min-width:120px;">
-      <a href="<?= BASE_URL ?>/modules/detalle.php?id=<?= $r['id'] ?>"
-         style="font-weight:700;font-size:14px;color:var(--azul-oscuro);text-decoration:none;">
+      <div style="font-weight:700;font-size:14px;color:var(--azul-oscuro);">
         <?= htmlspecialchars($r['codigo']) ?>
-      </a>
+      </div>
       <div style="font-size:12px;color:var(--gris-muted);">
         <?= htmlspecialchars($r['proposito']) ?>
       </div>
@@ -149,25 +148,17 @@ startLayout('Historial', 'historial');
     <!-- Acciones -->
     <div style="display:flex;gap:6px;align-items:center;">
       <?php if (in_array($r['estado'], ['activa','pendiente'])): ?>
-        <a href="<?= BASE_URL ?>/api/sala_libre.php?id=<?= $r['id'] ?>"
-           class="btn btn-outline btn-sm"
-           onclick="return confirm('¿Notificar que la sala fue desocupada?')"
-           title="Sala desocupada">
-          🔔 Sala desocupada
-        </a>
         <a href="<?= BASE_URL ?>/modules/posponer.php?id=<?= $r['id'] ?>"
-           class="btn btn-warning btn-sm" title="Posponer">⏩</a>
+           class="btn btn-warning btn-sm"> Posponer</a>
         <a href="<?= BASE_URL ?>/api/cancelar.php?id=<?= $r['id'] ?>"
            class="btn btn-danger btn-sm"
-           onclick="return confirm('¿Cancelar esta reservación?')"
-           title="Cancelar">✕</a>
+           onclick="return confirm('¿Cancelar esta reservación?')">✕ Cancelar</a>
       <?php endif; ?>
     </div>
   </div>
   <?php endforeach; ?>
   <?php endif; ?>
 </div>
-
 
 <!-- Paginación -->
 <?php if ($totalPages > 1): ?>

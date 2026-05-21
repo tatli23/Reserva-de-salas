@@ -1,6 +1,8 @@
 <?php
 // ============================================================
 //  modules/posponer.php — Posponer una reservación
+//  Usuarios: queda "pendiente" hasta que admin apruebe.
+//  Admin: se aplica directo.
 // ============================================================
 require_once '../config/config.php';
 requireLogin();
@@ -10,13 +12,12 @@ $pdo = getDB();
 $uid = $_SESSION['user_id'];
 $rid = (int)($_GET['id'] ?? $_POST['reservacion_id'] ?? 0);
 
-// Cargar la reservación (solo del usuario a menos que sea admin)
 $where = isAdmin() ? 'r.id = ?' : 'r.id = ? AND r.usuario_id = ?';
 $args  = isAdmin() ? [$rid] : [$rid, $uid];
 $stmt  = $pdo->prepare(
     "SELECT r.*, s.codigo, s.nombre AS sala_nombre, s.capacidad, s.equipamiento
      FROM reservaciones r JOIN salas s ON s.id = r.sala_id
-     WHERE $where AND r.estado NOT IN ('cancelada','completada')"
+     WHERE $where AND r.estado NOT IN ('cancelada','completada','rechazada')"
 );
 $stmt->execute($args);
 $reserv = $stmt->fetch();
@@ -34,30 +35,30 @@ $motivo         = $_POST['motivo']         ?? '';
 $errores        = [];
 $disponibilidad = [];
 
-// Si hay fecha seleccionada, calcular disponibilidad
 $fechaVer = $nueva_fecha ?: date('Y-m-d', strtotime($reserv['fecha'] . ' +1 day'));
 
 $stmtD = $pdo->prepare(
     'SELECT r2.hora_inicio, r2.hora_fin, r2.estado, u.nombre AS uname
      FROM reservaciones r2 JOIN usuarios u ON u.id = r2.usuario_id
-     WHERE r2.sala_id = ? AND r2.fecha = ? AND r2.estado NOT IN ("cancelada") AND r2.id != ?
+     WHERE r2.sala_id = ? AND r2.fecha = ? AND r2.estado NOT IN ("cancelada","rechazada") AND r2.id != ?
      ORDER BY r2.hora_inicio'
 );
 $stmtD->execute([$reserv['sala_id'], $fechaVer, $rid]);
 $reservHoras = $stmtD->fetchAll();
 
 for ($h = 8; $h < 20; $h++) {
-    $slot    = sprintf('%02d:00', $h);
-    $tipo    = 'libre';
-    $label   = 'Libre';
-    // ¿es la nueva franja?
+    $slot  = sprintf('%02d:00', $h);
+    $tipo  = 'libre';
+    $label = 'Libre';
     if ($nueva_fecha && $nueva_hi && $nueva_hf && $nueva_hi <= $slot && $nueva_hf > $slot) {
         $tipo = 'propia'; $label = 'Tu nueva reservación';
     }
     foreach ($reservHoras as $rh) {
         if ($rh['hora_inicio'] <= $slot && $rh['hora_fin'] > $slot) {
-            $tipo  = 'ocupada';
-            $label = 'Ocupada — ' . $rh['uname'];
+            $tipo  = ($rh['estado'] === 'pendiente') ? 'pendiente' : 'ocupada';
+            $label = ($rh['estado'] === 'pendiente')
+                   ? 'Pendiente aprobación'
+                   : 'Ocupada — ' . $rh['uname'];
             break;
         }
     }
@@ -73,10 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     if ($nueva_fecha < date('Y-m-d')) $errores[] = 'No puedes posponer a una fecha pasada.';
 
     if (empty($errores)) {
-        // Conflictos en nueva fecha/hora
         $stmtChk = $pdo->prepare(
             'SELECT COUNT(*) FROM reservaciones
-             WHERE sala_id=? AND fecha=? AND id != ? AND estado NOT IN ("cancelada")
+             WHERE sala_id=? AND fecha=? AND id != ? AND estado NOT IN ("cancelada","rechazada")
              AND NOT (hora_fin <= ? OR hora_inicio >= ?)'
         );
         $stmtChk->execute([$reserv['sala_id'], $nueva_fecha, $rid, $nueva_hi, $nueva_hf]);
@@ -86,35 +86,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     }
 
     if (empty($errores)) {
-        $pdo->prepare(
-            'UPDATE reservaciones SET estado="pospuesta", fecha=?, hora_inicio=?, hora_fin=?,
-             motivo_cancel=?, reservacion_orig=?, updated_at=NOW()
-             WHERE id=?'
-        )->execute([$nueva_fecha, $nueva_hi, $nueva_hf, $motivo, $rid, $rid]);
+        if (isAdmin()) {
+            // Admin: aplica posposición directo
+            $pdo->prepare(
+                'UPDATE reservaciones SET estado="pospuesta", fecha=?, hora_inicio=?, hora_fin=?,
+                 motivo_cancel=?, updated_at=NOW() WHERE id=?'
+            )->execute([$nueva_fecha, $nueva_hi, $nueva_hf, $motivo, $rid]);
 
-        // Notificación usuario
-        $pdo->prepare(
-            'INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, reservacion_id)
-             VALUES (?, "posposicion", "Reservación pospuesta",
-             CONCAT("Tu reservación del ", ?, " fue pospuesta al ", ?, " ", ?, "–", ?," . Revisa el nuevo horario."), ?)'
-        )->execute([$uid, $reserv['fecha'], $nueva_fecha, $nueva_hi, $nueva_hf, $rid]);
-
-        // Notificación admin
-        $admRow = $pdo->query('SELECT id FROM usuarios WHERE rol="admin" LIMIT 1')->fetch();
-        if ($admRow) {
-            $u = currentUser();
+            // Notifica al dueño de la reservación
             $pdo->prepare(
                 'INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, reservacion_id)
-                 VALUES (?, "posposicion", "Reservación pospuesta",
-                 CONCAT(?, " pospuso sala ", ?, " del ", ?, " al ", ?, ". Motivo: ", ?), ?)'
-            )->execute([
-                $admRow['id'], $u['nombre'], $reserv['codigo'],
-                $reserv['fecha'], $nueva_fecha, $motivo, $rid
-            ]);
-        }
+                 VALUES (?, "posposicion", "Reservación pospuesta por administrador",
+                 CONCAT("Tu reservación del ", ?, " fue pospuesta por el administrador al ", ?,
+                 " de ", ?, "–", ?, ". Motivo: ", ?), ?)'
+            )->execute([$reserv['usuario_id'], $reserv['fecha'], $nueva_fecha, $nueva_hi, $nueva_hf, $motivo, $rid]);
 
-        flash('✅ Reservación pospuesta correctamente.', 'success');
-        header('Location: ' . BASE_URL . '/modules/historial.php');
+            flash('✅ Reservación pospuesta correctamente.', 'success');
+            header('Location: ' . BASE_URL . '/modules/historial.php');
+
+        } else {
+            // Usuario: guarda solicitud de posposición como "pendiente"
+            // Se almacenan los nuevos valores en campos temporales
+            $pdo->prepare(
+                'UPDATE reservaciones SET estado="pendiente",
+                 fecha_solicitada=?, hora_inicio_solicitada=?, hora_fin_solicitada=?,
+                 motivo_cancel=?, updated_at=NOW() WHERE id=?'
+            )->execute([$nueva_fecha, $nueva_hi, $nueva_hf, $motivo, $rid]);
+
+            // Notificación al propio usuario
+            $pdo->prepare(
+                'INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, reservacion_id)
+                 VALUES (?, "posposicion", "Solicitud de posposición enviada",
+                 CONCAT("Tu solicitud para posponer sala ", ?, " del ", ?, " al ", ?,
+                 " fue enviada al administrador y está pendiente de aprobación."), ?)'
+            )->execute([$uid, $reserv['codigo'], $reserv['fecha'], $nueva_fecha, $rid]);
+
+            // Notificación al admin
+            $admRow = $pdo->query('SELECT id FROM usuarios WHERE rol="admin" LIMIT 1')->fetch();
+            if ($admRow) {
+                $u = currentUser();
+                $pdo->prepare(
+                    'INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, reservacion_id)
+                     VALUES (?, "posposicion", "Solicitud de posposición",
+                     CONCAT(?, " solicita posponer sala ", ?, " del ", ?, " al ", ?,
+                     " de ", ?, "–", ?. ". Motivo: ", ?. " Requiere tu aprobación."), ?)'
+                )->execute([
+                    $admRow['id'], $u['nombre'], $reserv['codigo'],
+                    $reserv['fecha'], $nueva_fecha, $nueva_hi, $nueva_hf, $motivo, $rid
+                ]);
+            }
+
+            flash('📋 Solicitud de posposición enviada. El administrador la revisará y recibirás una notificación.', 'info');
+            header('Location: ' . BASE_URL . '/modules/notificaciones.php');
+        }
         exit;
     }
 }
@@ -123,7 +147,17 @@ startLayout('Posponer Reservación', 'historial');
 ?>
 
 <h1 class="page-title">⏩ Posponer reservación</h1>
-<p class="page-sub">Selecciona nueva fecha y hora — el administrador recibe notificación con motivo y cambios.</p>
+<p class="page-sub">
+  <?= isAdmin()
+      ? 'Como administrador, la posposición se aplica de inmediato.'
+      : 'Tu solicitud será enviada al administrador para aprobación.' ?>
+</p>
+
+<?php if (!isAdmin()): ?>
+<div class="alert alert-info" style="margin-bottom:16px;">
+  📋 Tu solicitud de posposición quedará <strong>pendiente de aprobación</strong>. Recibirás una notificación cuando el administrador la revise.
+</div>
+<?php endif; ?>
 
 <?php if (!empty($errores)): ?>
   <div class="alert alert-danger">
@@ -137,7 +171,7 @@ startLayout('Posponer Reservación', 'historial');
   <div class="card" style="border-left:4px solid var(--ambar);">
     <div style="background:var(--ambar-claro);border-radius:8px;padding:12px 14px;margin-bottom:18px;">
       <div style="font-size:12px;font-weight:600;color:var(--ambar);margin-bottom:4px;">
-        RESERVACIÓN ORIGINAL (ACTUAL)
+        RESERVACIÓN ORIGINAL
       </div>
       <strong><?= htmlspecialchars($reserv['codigo']) ?></strong> ·
       <?= date('d M Y', strtotime($reserv['fecha'])) ?> ·
@@ -177,15 +211,16 @@ startLayout('Posponer Reservación', 'historial');
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
         <a href="<?= BASE_URL ?>/modules/historial.php" class="btn btn-ghost">← Regresar</a>
-        <a href="<?= BASE_URL ?>/api/cancelar.php?id=<?= $rid ?>"
-           class="btn btn-danger"
-           onclick="return confirm('¿Cancelar esta reservación?')">✕ Cancelar</a>
-        <button type="submit" class="btn btn-warning">⏩ Confirmar posposición</button>
+        <button type="submit" class="btn btn-warning">
+          <?= isAdmin() ? '⏩ Confirmar posposición' : '📋 Enviar solicitud' ?>
+        </button>
       </div>
 
+      <?php if (!isAdmin()): ?>
       <p style="font-size:12px;color:var(--gris-muted);margin-top:12px;">
-        🔔 Al confirmar, el administrador recibe notificación con fecha anterior, nueva fecha y motivo.
+        🔔 El administrador recibirá notificación con la fecha anterior, la nueva fecha y el motivo.
       </p>
+      <?php endif; ?>
     </form>
   </div>
 
@@ -206,7 +241,7 @@ startLayout('Posponer Reservación', 'historial');
     <?php if ($nueva_fecha): ?>
     <div style="margin-top:12px;padding:8px;background:var(--ambar-claro);border-radius:8px;font-size:12px;color:var(--ambar);">
       Cambio: <?= $reserv['fecha'] ?> <?= substr($reserv['hora_inicio'],0,5) ?> →
-      <?= $nueva_fecha ?> <?= substr($nueva_hi,0,5) ?> · Misma sala <?= $reserv['codigo'] ?>
+      <?= $nueva_fecha ?> <?= substr($nueva_hi,0,5) ?> · Sala <?= $reserv['codigo'] ?>
     </div>
     <?php endif; ?>
   </div>

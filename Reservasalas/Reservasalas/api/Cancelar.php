@@ -15,12 +15,20 @@ $stmt->execute($args);
 $r = $stmt->fetch();
 
 if (!$r) {
-    flash('Reservación no encontrada o ya cancelada.', 'danger');
-    header('Location: ' . BASE_URL . '/modules/historial.php');
+    $_SESSION['flash'] = ['msg' => 'Reservación no encontrada o ya cancelada.', 'tipo' => 'danger'];
+    header('Location: ' . BASE_URL . '/modules/mis_reservas.php');
     exit;
 }
 
-$pdo->prepare("UPDATE reservaciones SET estado='cancelada', updated_at=NOW() WHERE id=?")->execute([$rid]);
+// Marcar como cancelada solo si aún está pendiente/activa (evita doble ejecución)
+$upd = $pdo->prepare("UPDATE reservaciones SET estado='cancelada', updated_at=NOW() WHERE id=? AND estado NOT IN ('cancelada','completada')");
+$upd->execute([$rid]);
+if ($upd->rowCount() === 0) {
+    // Ya fue cancelada antes (doble clic), redirigir sin duplicar notificación
+    $_SESSION['flash'] = ['msg' => 'La reservación ya había sido cancelada.', 'tipo' => 'warning'];
+    header('Location: ' . BASE_URL . '/modules/mis_reservas.php');
+    exit;
+}
 
 // Notificación usuario
 $pdo->prepare(
@@ -42,6 +50,6 @@ if ($admRow && $admRow['id'] !== $uid) {
     )->execute([$admRow['id'], $u['nombre'], $r['sala_id'], $r['fecha'], $rid]);
 }
 
-flash('Reservación cancelada.', 'warning');
-header('Location: ' . BASE_URL . '/modules/historial.php');
+$_SESSION['flash'] = ['msg' => 'Reservación cancelada.', 'tipo' => 'warning'];
+header('Location: ' . BASE_URL . '/modules/mis_reservas.php');
 exit;

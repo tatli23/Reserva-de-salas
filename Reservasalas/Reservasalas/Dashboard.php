@@ -102,7 +102,6 @@ startLayout('Dashboard', 'dashboard');
   </div>
 </div>
 
-
 <!-- Próximas reservaciones -->
 <div class="card">
   <div class="card-header">
@@ -146,11 +145,10 @@ startLayout('Dashboard', 'dashboard');
           <td><?= badgeEstado($r['estado']) ?></td>
           <td style="white-space:nowrap;">
             <a href="<?= BASE_URL ?>/modules/posponer.php?id=<?= $r['id'] ?>"
-               class="btn btn-warning btn-sm" title="Posponer">⏩</a>
+               class="btn btn-warning btn-sm"> Posponer</a>
             <a href="<?= BASE_URL ?>/api/cancelar.php?id=<?= $r['id'] ?>"
                class="btn btn-danger btn-sm"
-               onclick="return confirm('¿Cancelar esta reservación?')"
-               title="Cancelar">✕</a>
+               onclick="return confirm('¿Cancelar esta reservación?')">✕ Cancelar</a>
           </td>
         </tr>
         <?php endforeach; ?>
